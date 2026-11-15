@@ -92,6 +92,7 @@
     filter: drop-shadow(0 0 18px currentColor); will-change: transform; }
   .dial.warm svg { color: var(--warm); }
   .dial.here svg { color: var(--here); animation: pulse 1s ease-in-out infinite; }
+  .dial.fuzzy svg { opacity: .55; }
   .dial.off svg { color: var(--dim); filter: none; opacity: .5; }
   @keyframes pulse { 50% { opacity: .55; } }
   #cDist { font-size: 68px; font-weight: 800; letter-spacing: -2px; line-height: 1; font-variant-numeric: tabular-nums; }
@@ -256,20 +257,50 @@
       return;
     }
     watchId = navigator.geolocation.watchPosition(
-      (p) => { pos = { lat: p.coords.latitude, lon: p.coords.longitude, acc: p.coords.accuracy }; gpsError = ''; },
+      (p) => { onFix(p.coords); gpsError = ''; },
       (e) => { gpsError = e.code === 1 ? 'Autorise la localisation pour cette page (réglages du navigateur), puis recharge.' : 'Position introuvable pour l\'instant… mets-toi à découvert.'; render(); },
       { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 }
     );
   }
+  // Lissage : chaque mesure est pondérée par sa précision annoncée ; les mesures très floues pèsent peu.
+  let kVar = 0, kAt = 0;
+  function onFix(c) {
+    const now = Date.now();
+    const acc = Math.max(c.accuracy || 50, 3);
+    if (!pos || kAt === 0 || acc < 1) { pos = { lat: c.latitude, lon: c.longitude, acc }; kVar = acc * acc; kAt = now; return; }
+    kVar += ((now - kAt) / 1000) * 4;            // on a pu marcher depuis : l'incertitude regonfle (~2 m/s)
+    const k = kVar / (kVar + acc * acc);
+    pos.lat += k * (c.latitude - pos.lat);
+    pos.lon += k * (c.longitude - pos.lon);
+    kVar = (1 - k) * kVar;
+    pos.acc = Math.max(Math.sqrt(kVar), 3);
+    kAt = now;
+  }
   let gpsError = '';
 
+  // Android : à plat, on suit le haut du téléphone ; tenu debout, la direction où l'on regarde (caméra arrière).
+  function androidHeading(a, b, g) {
+    if (Math.abs(b) < 40) return (360 - a) % 360;
+    const cA = Math.cos(rad(a)), sA = Math.sin(rad(a)), sB = Math.sin(rad(b)), cB = Math.cos(rad(b)), sG = Math.sin(rad(g)), cG = Math.cos(rad(g));
+    const rA = -cA * sG - sA * sB * cG, rB = -sA * sG + cA * sB * cG;
+    return (Math.atan2(rA, rB) * 180 / Math.PI + 360) % 360;
+  }
+  let hx = 0, hy = 0, compassAcc = null;
   function onOrientation(e) {
     let h = null;
-    if (typeof e.webkitCompassHeading === 'number') h = e.webkitCompassHeading;       // iPhone
-    else if (e.absolute && e.alpha !== null) h = 360 - e.alpha;                        // Android
+    if (typeof e.webkitCompassHeading === 'number') {                                  // iPhone (déjà compensé)
+      h = e.webkitCompassHeading;
+      compassAcc = typeof e.webkitCompassAccuracy === 'number' ? e.webkitCompassAccuracy : null;
+    } else if (e.absolute && e.alpha !== null && e.beta !== null && e.gamma !== null) { // Android
+      h = androidHeading(e.alpha, e.beta, e.gamma);
+    }
     if (h === null || isNaN(h)) return;
     const turn = (screen.orientation && screen.orientation.angle) || 0;
-    heading = ((h + turn) % 360 + 360) % 360;
+    h = h + turn;
+    // Moyenne glissante sur le cercle (évite le saut 359° → 0° et les tremblements)
+    const f = heading === null ? 1 : 0.12;
+    hx += f * (Math.cos(rad(h)) - hx); hy += f * (Math.sin(rad(h)) - hy);
+    heading = (Math.atan2(hy, hx) * 180 / Math.PI + 360) % 360;
   }
   // Doit être appelé depuis un appui (iPhone demande l'autorisation à ce moment-là).
   async function startCompass() {
@@ -452,7 +483,7 @@
     const stale = t.posAge > 30000;
     const blur = Math.max(pos.acc || 0, t.acc || 0);
     $('cDist').textContent = fmtDist(d);
-    $('cState').textContent = stale ? 'Dernière position connue : ' + fmtAge(t.posAge) : 'En direct · précision ± ' + Math.round(blur) + ' m';
+    $('cState').textContent = stale ? 'Dernière position connue : ' + fmtAge(t.posAge) : 'En direct · précision de la mesure ± ' + Math.round(blur) + ' m';
     if (stale) $('cCall').classList.add('on');
 
     if (d < Math.max(8, Math.min(blur, 25))) {
@@ -464,9 +495,11 @@
     } else {
       renderCompass.buzzed = false;
       if (d < 50) dial.classList.add('warm');
-      hint.textContent = heading === null
-        ? 'Boussole indisponible sur cet appareil : la flèche suppose que tu fais face au nord.'
-        : 'Tiens le téléphone à plat et marche dans le sens de la flèche.';
+      if (d < blur * 2) dial.classList.add('fuzzy');
+      if (heading === null) hint.textContent = 'Boussole indisponible sur cet appareil : la flèche suppose que tu fais face au nord.';
+      else if (compassAcc !== null && (compassAcc < 0 || compassAcc > 30)) hint.textContent = 'Boussole imprécise : dessine un grand 8 avec ton téléphone pour la recalibrer.';
+      else if (d < blur * 2) hint.textContent = 'Le GPS ne peut plus être plus précis à cette distance : regarde autour de toi !';
+      else hint.textContent = 'Marche dans le sens de la flèche. Elle se stabilise après quelques pas.';
     }
   }
 
