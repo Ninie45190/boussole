@@ -1,0 +1,464 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#0b0f1a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Boussole">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<title>Boussole — retrouve tes amis</title>
+<style>
+  :root {
+    --bg: #0b0f1a; --card: #161c2c; --line: #263048; --text: #f3f5fb; --dim: #8a94ad;
+    --accent: #5ee6ff; --warm: #ffb347; --here: #6dff9c; --danger: #ff6b7a;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: radial-gradient(120% 80% at 50% 0%, #17203a 0%, var(--bg) 60%) fixed var(--bg);
+    color: var(--text); font: 17px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    overscroll-behavior: none; -webkit-user-select: none; user-select: none;
+  }
+  .screen { display: none; min-height: 100%; flex-direction: column;
+    padding: calc(20px + env(safe-area-inset-top)) 20px calc(20px + env(safe-area-inset-bottom)); max-width: 520px; margin: 0 auto; }
+  .screen.on { display: flex; }
+  h1 { font-size: 34px; margin: 0; letter-spacing: -0.5px; }
+  .sub { color: var(--dim); margin: 6px 0 0; }
+  label { display: block; color: var(--dim); font-size: 13px; text-transform: uppercase; letter-spacing: 1px; margin: 22px 0 8px; }
+  input {
+    width: 100%; background: var(--card); border: 1.5px solid var(--line); color: var(--text);
+    border-radius: 14px; padding: 15px 16px; font: inherit; font-size: 19px; outline: none;
+    -webkit-user-select: text; user-select: text;
+  }
+  input:focus { border-color: var(--accent); }
+  #code { text-transform: uppercase; letter-spacing: 10px; text-align: center; font-weight: 700; font-size: 26px; }
+  button { font: inherit; color: inherit; border: 0; cursor: pointer; }
+  .btn { width: 100%; border-radius: 14px; padding: 16px; font-weight: 700; font-size: 18px; margin-top: 12px; }
+  .btn.main { background: var(--accent); color: #06202a; }
+  .btn.ghost { background: transparent; border: 1.5px solid var(--line); }
+  .btn:active { transform: scale(0.98); }
+  .or { text-align: center; color: var(--dim); margin: 22px 0 0; font-size: 14px; }
+  .err { color: var(--danger); min-height: 22px; margin: 12px 0 0; font-size: 15px; }
+  .note { color: var(--dim); font-size: 13px; margin-top: auto; padding-top: 24px; text-align: center; }
+
+  /* Groupe */
+  .top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .codebox { background: var(--card); border: 1.5px solid var(--line); border-radius: 14px; padding: 8px 14px; text-align: center; }
+  .codebox small { display: block; color: var(--dim); font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+  .codebox b { font-size: 24px; letter-spacing: 5px; }
+  .banner { border-radius: 14px; padding: 13px 15px; margin-top: 14px; font-size: 15px; display: none; }
+  .banner.on { display: block; }
+  .banner.warn { background: #3a2a12; color: var(--warm); }
+  .banner.seek { background: #123a2a; color: var(--here); font-weight: 700; text-align: left; width: 100%; }
+  .list { margin-top: 18px; display: flex; flex-direction: column; gap: 10px; }
+  .friend { display: flex; align-items: center; gap: 14px; width: 100%; text-align: left;
+    background: var(--card); border: 1.5px solid var(--line); border-radius: 16px; padding: 14px 16px; }
+  .friend:active { border-color: var(--accent); }
+  .avatar { width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; font-size: 20px; color: #0b0f1a; flex: none; }
+  .friend .who { flex: 1; min-width: 0; }
+  .friend .who b { display: block; font-size: 19px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .friend .who span { color: var(--dim); font-size: 14px; }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--dim); margin-right: 6px; }
+  .dot.live { background: var(--here); }
+  .friend .dist { font-weight: 800; font-size: 20px; color: var(--accent); white-space: nowrap; }
+  .empty { color: var(--dim); text-align: center; padding: 34px 10px; border: 1.5px dashed var(--line); border-radius: 16px; }
+  .link { background: none; color: var(--dim); text-decoration: underline; font-size: 14px; padding: 12px; margin: 0 auto; display: block; }
+
+  /* Boussole */
+  #compass { align-items: center; text-align: center; }
+  .back { align-self: flex-start; background: var(--card); border: 1.5px solid var(--line); border-radius: 12px; padding: 10px 16px; font-size: 16px; }
+  #cName { font-size: 30px; font-weight: 800; margin: 14px 0 0; }
+  #cState { color: var(--dim); font-size: 15px; min-height: 22px; margin: 4px 0 0; }
+  .dial { position: relative; width: min(78vw, 46vh, 340px); aspect-ratio: 1; margin: auto 0; flex: none; }
+  .dial .ring { position: absolute; inset: 0; border-radius: 50%; border: 2px solid var(--line);
+    background: radial-gradient(circle, #1b2338 0%, #111728 70%); }
+  .dial svg { position: absolute; inset: 0; width: 100%; height: 100%; color: var(--accent);
+    filter: drop-shadow(0 0 18px currentColor); will-change: transform; }
+  .dial.warm svg { color: var(--warm); }
+  .dial.here svg { color: var(--here); animation: pulse 1s ease-in-out infinite; }
+  .dial.off svg { color: var(--dim); filter: none; opacity: .5; }
+  @keyframes pulse { 50% { opacity: .55; } }
+  #cDist { font-size: 68px; font-weight: 800; letter-spacing: -2px; line-height: 1; font-variant-numeric: tabular-nums; }
+  #cHint { color: var(--dim); margin: 8px 0 0; min-height: 44px; font-size: 16px; padding: 0 8px; }
+  #cHint.strong { color: var(--here); font-weight: 700; font-size: 19px; }
+  #cCall { display: none; }
+  #cCall.on { display: block; }
+</style>
+</head>
+<body>
+
+<!-- Accueil -->
+<section class="screen" id="home">
+  <h1>🧭 Boussole</h1>
+  <p class="sub">Retrouve tes amis dans la foule : suis la flèche.</p>
+
+  <label for="name">Ton prénom</label>
+  <input id="name" maxlength="20" autocomplete="given-name" placeholder="Ex. Camille">
+
+  <label for="code">Code du groupe</label>
+  <input id="code" maxlength="4" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="ABCD">
+  <button class="btn main" id="joinBtn">Rejoindre le groupe</button>
+
+  <p class="or">— ou —</p>
+  <button class="btn ghost" id="createBtn">Créer un nouveau groupe</button>
+  <p class="err" id="homeErr"></p>
+
+  <p class="note">Ta position n'est partagée qu'avec ton groupe, uniquement quand l'app est ouverte. Rien n'est enregistré.</p>
+</section>
+
+<!-- Groupe -->
+<section class="screen" id="group">
+  <div class="top">
+    <div>
+      <h1 style="font-size:26px">Qui cherches-tu ?</h1>
+      <p class="sub" id="meLine"></p>
+    </div>
+    <div class="codebox"><small>Code</small><b id="gCode"></b></div>
+  </div>
+
+  <div class="banner warn" id="gpsWarn"></div>
+  <button class="banner seek" id="seekBanner"></button>
+
+  <div class="list" id="list"></div>
+
+  <button class="btn ghost" id="inviteBtn" style="margin-top:18px">Inviter des amis</button>
+  <button class="link" id="leaveBtn">Quitter le groupe</button>
+  <p class="note">Garde l'app ouverte pour que tes amis puissent te trouver.</p>
+</section>
+
+<!-- Boussole -->
+<section class="screen" id="compass">
+  <button class="back" id="backBtn">‹ Retour</button>
+  <p id="cName"></p>
+  <p id="cState"></p>
+  <div class="dial" id="dial">
+    <div class="ring"></div>
+    <svg viewBox="0 0 200 200" id="arrow" aria-hidden="true">
+      <path d="M100 18 L152 150 L100 122 L48 150 Z" fill="currentColor"/>
+    </svg>
+  </div>
+  <div id="cDist">—</div>
+  <p id="cHint"></p>
+  <button class="btn ghost" id="cCall">Lui demander d'ouvrir l'app</button>
+</section>
+
+<script src="config.js"></script>
+<script>
+(() => {
+  // En local ou sur le serveur lui-même : même adresse. Depuis GitHub Pages : serveur indiqué dans config.js.
+  const API = /github\.io$/.test(location.hostname) ? (window.BOUSSOLE_API || '') : '';
+  const $ = (id) => document.getElementById(id);
+  const params = new URLSearchParams(location.search);
+  const store = {
+    get() { try { return JSON.parse(localStorage.getItem('boussole') || 'null'); } catch { return null; } },
+    set(v) { try { v ? localStorage.setItem('boussole', JSON.stringify(v)) : localStorage.removeItem('boussole'); } catch {} },
+  };
+
+  let me = store.get();          // { id, name, code }
+  let members = [];              // dernière liste reçue du serveur
+  let pos = null;                // { lat, lon, acc }
+  let heading = null;            // cap du téléphone, degrés depuis le nord
+  let targetId = null;           // ami recherché
+  let shownAngle = 0;            // angle affiché de la flèche (cumulé, pour tourner au plus court)
+  let syncTimer = null, watchId = null, wakeLock = null, compassOn = false;
+  let knownSeekers = new Set();
+
+  // --- Mode test sur ordinateur : ?sim=48.8584,2.2945&cap=90
+  const sim = params.get('sim');
+  if (sim) {
+    const [la, lo] = sim.split(',').map(Number);
+    if (isFinite(la) && isFinite(lo)) pos = { lat: la, lon: lo, acc: 5 };
+    if (params.has('cap')) heading = Number(params.get('cap')) || 0;
+  }
+
+  // --- Géométrie
+  const rad = (d) => d * Math.PI / 180;
+  function distance(a, b) {
+    const R = 6371000, dLat = rad(b.lat - a.lat), dLon = rad(b.lon - a.lon);
+    const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLon / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(h));
+  }
+  function bearing(a, b) {
+    const y = Math.sin(rad(b.lon - a.lon)) * Math.cos(rad(b.lat));
+    const x = Math.cos(rad(a.lat)) * Math.sin(rad(b.lat)) - Math.sin(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.cos(rad(b.lon - a.lon));
+    return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+  }
+  function fmtDist(m) {
+    if (m < 50) return Math.round(m) + ' m';
+    if (m < 1000) return Math.round(m / 5) * 5 + ' m';
+    return (m / 1000).toFixed(m < 10000 ? 1 : 0).replace('.', ',') + ' km';
+  }
+  function fmtAge(ms) {
+    const s = Math.round(ms / 1000);
+    if (s < 60) return 'il y a ' + s + ' s';
+    const min = Math.round(s / 60);
+    if (min < 60) return 'il y a ' + min + ' min';
+    return 'il y a ' + Math.round(min / 60) + ' h';
+  }
+  const COLORS = ['#5ee6ff', '#ffb347', '#ff7eb6', '#6dff9c', '#c39bff', '#ffe066', '#ff8a65', '#7fd1ff'];
+  const colorOf = (id) => COLORS[[...id].reduce((n, c) => n + c.charCodeAt(0), 0) % COLORS.length];
+
+  // --- Navigation entre écrans
+  function show(name) {
+    for (const s of document.querySelectorAll('.screen')) s.classList.toggle('on', s.id === name);
+  }
+
+  // --- Réseau
+  async function post(route, body) {
+    const r = await fetch(API + route, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    return { ok: r.ok, status: r.status, data: await r.json().catch(() => ({})) };
+  }
+  async function sync() {
+    if (!me) return;
+    try {
+      const r = await post('/api/sync', {
+        code: me.code, id: me.id, name: me.name, seeking: targetId,
+        lat: pos && pos.lat, lon: pos && pos.lon, acc: pos && pos.acc,
+      });
+      if (r.ok) { members = r.data.members || []; netDown = false; }
+      else if (r.status === 403) { leave('Ce groupe est complet.'); return; }
+    } catch { netDown = true; }
+    render();
+  }
+  let netDown = false;
+
+  // --- Capteurs
+  function startGps() {
+    if (sim || watchId !== null) return;
+    if (!navigator.geolocation) {
+      gpsError = location.protocol === 'https:' ? 'Localisation indisponible sur cet appareil.' : 'La localisation exige une adresse en https.';
+      return;
+    }
+    watchId = navigator.geolocation.watchPosition(
+      (p) => { pos = { lat: p.coords.latitude, lon: p.coords.longitude, acc: p.coords.accuracy }; gpsError = ''; },
+      (e) => { gpsError = e.code === 1 ? 'Autorise la localisation pour cette page (réglages du navigateur), puis recharge.' : 'Position introuvable pour l\'instant… mets-toi à découvert.'; render(); },
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 }
+    );
+  }
+  let gpsError = '';
+
+  function onOrientation(e) {
+    let h = null;
+    if (typeof e.webkitCompassHeading === 'number') h = e.webkitCompassHeading;       // iPhone
+    else if (e.absolute && e.alpha !== null) h = 360 - e.alpha;                        // Android
+    if (h === null || isNaN(h)) return;
+    const turn = (screen.orientation && screen.orientation.angle) || 0;
+    heading = ((h + turn) % 360 + 360) % 360;
+  }
+  // Doit être appelé depuis un appui (iPhone demande l'autorisation à ce moment-là).
+  async function startCompass() {
+    if (compassOn || params.has('cap')) return;
+    try {
+      if (window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission === 'function') {
+        if (await DeviceOrientationEvent.requestPermission() !== 'granted') return;
+      }
+      window.addEventListener('deviceorientationabsolute', onOrientation, true);
+      window.addEventListener('deviceorientation', onOrientation, true);
+      compassOn = true;
+    } catch {}
+  }
+
+  async function keepAwake(on) {
+    try {
+      if (on && 'wakeLock' in navigator && !wakeLock) {
+        wakeLock = await navigator.wakeLock.request('screen');
+        wakeLock.addEventListener('release', () => { wakeLock = null; });
+      } else if (!on && wakeLock) { await wakeLock.release(); wakeLock = null; }
+    } catch {}
+  }
+
+  // --- Entrée / sortie du groupe
+  function enter() {
+    store.set(me);
+    $('gCode').textContent = me.code;
+    $('meLine').textContent = 'Connecté·e : ' + me.name;
+    show('group');
+    startGps();
+    clearInterval(syncTimer);
+    syncTimer = setInterval(sync, 2000);
+    sync();
+  }
+  function leave(msg) {
+    if (me) post('/api/leave', { code: me.code, id: me.id }).catch(() => {});
+    clearInterval(syncTimer);
+    if (watchId !== null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
+    keepAwake(false);
+    me = null; members = []; targetId = null; store.set(null);
+    $('homeErr').textContent = msg || '';
+    show('home');
+  }
+  function newId() {
+    const a = new Uint8Array(12); crypto.getRandomValues(a);
+    return [...a].map((b) => b.toString(16).padStart(2, '0')).join('');
+  }
+  function readName() {
+    const name = $('name').value.trim();
+    if (!name) { $('homeErr').textContent = 'Indique ton prénom.'; $('name').focus(); return null; }
+    return name;
+  }
+
+  $('joinBtn').onclick = async () => {
+    const name = readName(); if (!name) return;
+    const code = $('code').value.toUpperCase().replace(/[^A-Z]/g, '');
+    if (code.length !== 4) { $('homeErr').textContent = 'Le code fait 4 lettres.'; return; }
+    startCompass();
+    // Tout code de 4 lettres est accepté : le groupe est créé s'il n'existe pas encore.
+    me = { id: newId(), name, code }; enter();
+  };
+  $('createBtn').onclick = async () => {
+    const name = readName(); if (!name) return;
+    startCompass();
+    $('homeErr').textContent = 'Connexion… (jusqu\'à une minute si le serveur dormait)';
+    try {
+      const r = await post('/api/create', {});
+      $('homeErr').textContent = '';
+      me = { id: newId(), name, code: r.data.code }; enter();
+    } catch { $('homeErr').textContent = 'Pas de connexion.'; }
+  };
+  $('leaveBtn').onclick = () => { if (confirm('Quitter le groupe ? Tes amis ne pourront plus te trouver.')) leave(); };
+
+  function inviteUrl() { return location.origin + location.pathname + '?g=' + me.code; }
+  async function shareText(text) {
+    try {
+      if (navigator.share) { await navigator.share({ text, url: inviteUrl() }); return; }
+      await navigator.clipboard.writeText(text + ' ' + inviteUrl());
+      alert('Lien copié : colle-le dans un message.');
+    } catch {}
+  }
+  $('inviteBtn').onclick = () => shareText('Rejoins-moi sur Boussole pour qu\'on se retrouve ! Code : ' + me.code);
+  $('cCall').onclick = () => shareText('Je te cherche ! Ouvre Boussole pour que je te trouve (code ' + me.code + ')');
+
+  // --- Boussole
+  function openCompass(id) {
+    targetId = id;
+    startCompass();
+    keepAwake(true);
+    show('compass');
+    render();
+    sync();
+  }
+  $('backBtn').onclick = () => { targetId = null; keepAwake(false); show('group'); sync(); };
+  $('seekBanner').onclick = () => { const id = $('seekBanner').dataset.id; if (id) openCompass(id); };
+
+  // --- Affichage
+  function render() {
+    if (!me) return;
+    const others = members.filter((m) => m.id !== me.id);
+
+    // Avertissements
+    const warn = netDown ? 'Connexion au serveur… (jusqu\'à une minute s\'il dormait)' : (!pos ? (gpsError || 'Recherche de ta position…') : '');
+    $('gpsWarn').textContent = warn;
+    $('gpsWarn').classList.toggle('on', !!warn);
+
+    // « X te cherche »
+    const seekers = others.filter((m) => m.seeking === me.id);
+    const sb = $('seekBanner');
+    if (seekers.length && !targetId) {
+      sb.textContent = '👋 ' + seekers.map((s) => s.name).join(', ') + (seekers.length > 1 ? ' te cherchent' : ' te cherche') + ' — touche pour y aller';
+      sb.dataset.id = seekers[0].id;
+      sb.classList.add('on');
+    } else sb.classList.remove('on');
+    for (const s of seekers) if (!knownSeekers.has(s.id) && navigator.vibrate) navigator.vibrate([200, 100, 200]);
+    knownSeekers = new Set(seekers.map((s) => s.id));
+
+    // Liste des amis
+    const list = $('list');
+    list.textContent = '';
+    if (!others.length) {
+      const d = document.createElement('div');
+      d.className = 'empty';
+      d.textContent = 'Personne d\'autre pour l\'instant. Donne le code ' + me.code + ' à tes amis.';
+      list.appendChild(d);
+    }
+    others.sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+    for (const m of others) {
+      const b = document.createElement('button');
+      b.className = 'friend';
+      const av = document.createElement('div');
+      av.className = 'avatar'; av.style.background = colorOf(m.id); av.textContent = m.name[0].toUpperCase();
+      const who = document.createElement('div'); who.className = 'who';
+      const nm = document.createElement('b'); nm.textContent = m.name;
+      const st = document.createElement('span');
+      const live = m.seenAge < 10000;
+      const dot = document.createElement('i'); dot.className = 'dot' + (live ? ' live' : '');
+      st.append(dot, m.lat === null ? 'position pas encore reçue' : live ? 'en ligne' : 'vu·e ' + fmtAge(m.seenAge));
+      who.append(nm, st);
+      const di = document.createElement('div'); di.className = 'dist';
+      di.textContent = pos && m.lat !== null ? fmtDist(distance(pos, m)) : '';
+      b.append(av, who, di);
+      b.onclick = () => openCompass(m.id);
+      list.appendChild(b);
+    }
+
+    if (targetId) renderCompass();
+  }
+
+  function renderCompass() {
+    const t = members.find((m) => m.id === targetId);
+    const dial = $('dial'), hint = $('cHint');
+    $('cName').textContent = t ? t.name : '…';
+    $('cCall').classList.remove('on');
+    hint.classList.remove('strong');
+    dial.className = 'dial';
+
+    if (!t) { $('cState').textContent = 'A quitté le groupe'; $('cDist').textContent = '—'; hint.textContent = ''; dial.classList.add('off'); return; }
+    if (!pos) { $('cState').textContent = ''; $('cDist').textContent = '—'; hint.textContent = gpsError || 'Recherche de ta position…'; dial.classList.add('off'); return; }
+    if (t.lat === null) {
+      $('cState').textContent = 'Position pas encore reçue'; $('cDist').textContent = '—';
+      hint.textContent = 'Son téléphone n\'a pas encore envoyé de position.';
+      dial.classList.add('off'); $('cCall').classList.add('on'); return;
+    }
+
+    const d = distance(pos, t);
+    const stale = t.posAge > 30000;
+    const blur = Math.max(pos.acc || 0, t.acc || 0);
+    $('cDist').textContent = fmtDist(d);
+    $('cState').textContent = stale ? 'Dernière position connue : ' + fmtAge(t.posAge) : 'En direct · précision ± ' + Math.round(blur) + ' m';
+    if (stale) $('cCall').classList.add('on');
+
+    if (d < Math.max(8, Math.min(blur, 25))) {
+      dial.classList.add('here');
+      hint.classList.add('strong');
+      hint.textContent = stale ? 'Tu es là où ' + t.name + ' était. Regarde autour de toi !' : 'Tu y es ! Lève la tête, ' + t.name + ' est juste là.';
+      if (!renderCompass.buzzed && navigator.vibrate) navigator.vibrate([150, 80, 150, 80, 300]);
+      renderCompass.buzzed = true;
+    } else {
+      renderCompass.buzzed = false;
+      if (d < 50) dial.classList.add('warm');
+      hint.textContent = heading === null
+        ? 'Boussole indisponible sur cet appareil : la flèche suppose que tu fais face au nord.'
+        : 'Tiens le téléphone à plat et marche dans le sens de la flèche.';
+    }
+  }
+
+  // Rotation fluide de la flèche (60 images/s), toujours par le chemin le plus court.
+  function frame() {
+    const t = targetId && members.find((m) => m.id === targetId);
+    if (t && pos && t.lat !== null) {
+      const want = bearing(pos, t) - (heading || 0);
+      const delta = ((want - shownAngle) % 360 + 540) % 360 - 180;
+      shownAngle += delta * 0.18;
+      $('arrow').style.transform = 'rotate(' + shownAngle.toFixed(1) + 'deg)';
+    }
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && me) { sync(); if (targetId) keepAwake(true); }
+  });
+
+  // --- Démarrage
+  $('code').addEventListener('input', (e) => { e.target.value = e.target.value.toUpperCase().replace(/[^A-Z]/g, ''); });
+  const invited = (params.get('g') || '').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 4);
+  if (me && invited && invited !== me.code) { $('name').value = me.name; me = null; } // invité dans un autre groupe
+  if (me) enter();
+  else { if (invited) $('code').value = invited; show('home'); }
+})();
+</script>
+</body>
+</html>

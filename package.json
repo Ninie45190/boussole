@@ -1,0 +1,8 @@
+{
+  "name": "boussole",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Retrouver ses amis dans la foule : une flèche, une distance.",
+  "scripts": { "start": "node server.js" },
+  "engines": { "node": ">=18" }
+}
