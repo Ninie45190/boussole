@@ -137,10 +137,7 @@
 
   <div class="list" id="list"></div>
 
-  <div class="row2">
-    <button class="btn main" id="smsBtn">✉️ Envoyer par SMS</button>
-    <button class="btn main" id="qrBtn">▦ Montrer le QR code</button>
-  </div>
+  <button class="btn main" id="inviteBtn" style="margin-top:18px">👋 Inviter des amis</button>
   <button class="link" id="leaveBtn">Quitter le groupe</button>
   <p class="note">Garde l'app ouverte pour que tes amis puissent te trouver.</p>
 </section>
@@ -162,10 +159,11 @@
 </section>
 
 <div class="modal" id="qrModal">
-  <h2>Scannez pour rejoindre</h2>
-  <p>Ouvrez l'appareil photo et visez le code.</p>
+  <h2>Inviter des amis</h2>
+  <p>Qu'ils scannent ce code avec l'appareil photo.</p>
   <div id="qrBox"></div>
   <div id="qrCode"></div>
+  <button class="btn main" id="smsBtn">✉️ Ou envoyer le lien par SMS</button>
   <button class="btn ghost" id="qrClose">Fermer</button>
 </div>
 
@@ -357,7 +355,7 @@
     const body = 'Rejoins-moi sur Boussole pour qu\'on se retrouve : ' + inviteUrl() + ' (code ' + me.code + ')';
     location.href = 'sms:?&body=' + encodeURIComponent(body); // « ?& » fonctionne sur iPhone et Android
   };
-  $('qrBtn').onclick = () => {
+  $('inviteBtn').onclick = () => {
     const qr = qrcode(0, 'M');
     qr.addData(inviteUrl());
     qr.make();
