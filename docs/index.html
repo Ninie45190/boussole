@@ -68,6 +68,18 @@
   .empty { color: var(--dim); text-align: center; padding: 34px 10px; border: 1.5px dashed var(--line); border-radius: 16px; }
   .link { background: none; color: var(--dim); text-decoration: underline; font-size: 14px; padding: 12px; margin: 0 auto; display: block; }
 
+  .row2 { display: flex; gap: 10px; margin-top: 18px; }
+  .row2 .btn { margin-top: 0; padding: 14px 8px; font-size: 16px; }
+  .modal { position: fixed; inset: 0; background: rgba(5,8,16,.92); display: none; z-index: 10;
+    flex-direction: column; align-items: center; justify-content: center; padding: 24px; text-align: center; }
+  .modal.on { display: flex; }
+  .modal h2 { margin: 0 0 4px; font-size: 24px; }
+  .modal p { color: var(--dim); margin: 0 0 18px; }
+  #qrBox { background: #fff; border-radius: 18px; padding: 14px; width: min(80vw, 62vh, 340px); aspect-ratio: 1; }
+  #qrBox svg { width: 100%; height: 100%; display: block; }
+  #qrCode { font-size: 32px; font-weight: 800; letter-spacing: 8px; margin: 18px 0 4px; }
+  .modal .btn { max-width: 320px; }
+
   /* Boussole */
   #compass { align-items: center; text-align: center; }
   .back { align-self: flex-start; background: var(--card); border: 1.5px solid var(--line); border-radius: 12px; padding: 10px 16px; font-size: 16px; }
@@ -125,7 +137,10 @@
 
   <div class="list" id="list"></div>
 
-  <button class="btn ghost" id="inviteBtn" style="margin-top:18px">Inviter des amis</button>
+  <div class="row2">
+    <button class="btn main" id="smsBtn">✉️ Envoyer par SMS</button>
+    <button class="btn main" id="qrBtn">▦ Montrer le QR code</button>
+  </div>
   <button class="link" id="leaveBtn">Quitter le groupe</button>
   <p class="note">Garde l'app ouverte pour que tes amis puissent te trouver.</p>
 </section>
@@ -146,6 +161,15 @@
   <button class="btn ghost" id="cCall">Lui demander d'ouvrir l'app</button>
 </section>
 
+<div class="modal" id="qrModal">
+  <h2>Scannez pour rejoindre</h2>
+  <p>Ouvrez l'appareil photo et visez le code.</p>
+  <div id="qrBox"></div>
+  <div id="qrCode"></div>
+  <button class="btn ghost" id="qrClose">Fermer</button>
+</div>
+
+<script src="qrcode.js"></script>
 <script src="config.js"></script>
 <script>
 (() => {
@@ -329,7 +353,20 @@
       alert('Lien copié : colle-le dans un message.');
     } catch {}
   }
-  $('inviteBtn').onclick = () => shareText('Rejoins-moi sur Boussole pour qu\'on se retrouve ! Code : ' + me.code);
+  $('smsBtn').onclick = () => {
+    const body = 'Rejoins-moi sur Boussole pour qu\'on se retrouve : ' + inviteUrl() + ' (code ' + me.code + ')';
+    location.href = 'sms:?&body=' + encodeURIComponent(body); // « ?& » fonctionne sur iPhone et Android
+  };
+  $('qrBtn').onclick = () => {
+    const qr = qrcode(0, 'M');
+    qr.addData(inviteUrl());
+    qr.make();
+    $('qrBox').innerHTML = qr.createSvgTag({ cellSize: 4, margin: 0, scalable: true });
+    $('qrCode').textContent = me.code;
+    $('qrModal').classList.add('on');
+    keepAwake(true);
+  };
+  $('qrClose').onclick = () => { $('qrModal').classList.remove('on'); if (!targetId) keepAwake(false); };
   $('cCall').onclick = () => shareText('Je te cherche ! Ouvre Boussole pour que je te trouve (code ' + me.code + ')');
 
   // --- Boussole
