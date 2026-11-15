@@ -58,6 +58,14 @@
   .friend { display: flex; align-items: center; gap: 14px; width: 100%; text-align: left;
     background: var(--card); border: 1.5px solid var(--line); border-radius: 16px; padding: 14px 16px; }
   .friend:active { border-color: var(--accent); }
+  .avatar { background-size: cover; background-position: center; }
+  .picker { display: flex; align-items: center; gap: 14px; background: var(--card); border: 1.5px dashed var(--line);
+    border-radius: 14px; padding: 12px 14px; width: 100%; text-align: left; }
+  .picker:active { border-color: var(--accent); }
+  .picker .ph { width: 64px; height: 64px; border-radius: 50%; background: #0b0f1a center/cover; display: grid; place-items: center; font-size: 28px; flex: none; border: 2px solid var(--line); }
+  .picker b { display: block; font-size: 17px; }
+  .picker span { color: var(--dim); font-size: 14px; }
+  #cPhoto { width: 84px; height: 84px; border-radius: 50%; background: var(--card) center/cover; border: 3px solid var(--accent); margin: 10px auto 0; display: none; }
   .avatar { width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; font-size: 20px; color: #0b0f1a; flex: none; }
   .friend .who { flex: 1; min-width: 0; }
   .friend .who b { display: block; font-size: 19px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -112,6 +120,13 @@
   <label for="name">Ton prénom</label>
   <input id="name" maxlength="20" autocomplete="given-name" placeholder="Ex. Camille">
 
+  <label>Ta photo <small style="text-transform:none;letter-spacing:0">(pour qu'on te reconnaisse)</small></label>
+  <button type="button" class="picker" id="photoBtn">
+    <div class="ph" id="photoPrev">📷</div>
+    <div><b id="photoTitle">Prendre un selfie</b><span id="photoSub">Facultatif · tu peux aussi choisir une photo</span></div>
+  </button>
+  <input type="file" id="photoFile" accept="image/*" capture="user" hidden>
+
   <label for="code">Code du groupe</label>
   <input id="code" maxlength="4" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="ABCD">
   <button class="btn main" id="joinBtn">Rejoindre le groupe</button>
@@ -120,14 +135,14 @@
   <button class="btn ghost" id="createBtn">Créer un nouveau groupe</button>
   <p class="err" id="homeErr"></p>
 
-  <p class="note">Ta position n'est partagée qu'avec ton groupe, uniquement quand l'app est ouverte. Rien n'est enregistré.</p>
+  <p class="note">Ta position et ta photo ne sont partagées qu'avec ton groupe, uniquement quand l'app est ouverte. Rien n'est enregistré.</p>
 </section>
 
 <!-- Groupe -->
 <section class="screen" id="group">
   <div class="top">
     <div>
-      <h1 style="font-size:26px">Qui cherches-tu ?</h1>
+      <h1 style="font-size:23px;white-space:nowrap">Qui cherches-tu ?</h1>
       <p class="sub" id="meLine"></p>
     </div>
     <div class="codebox"><small>Code</small><b id="gCode"></b></div>
@@ -146,6 +161,7 @@
 <!-- Boussole -->
 <section class="screen" id="compass">
   <button class="back" id="backBtn">‹ Retour</button>
+  <div id="cPhoto"></div>
   <p id="cName"></p>
   <p id="cState"></p>
   <div class="dial" id="dial">
@@ -189,6 +205,10 @@
   let shownAngle = 0;            // angle affiché de la flèche (cumulé, pour tourner au plus court)
   let syncTimer = null, watchId = null, wakeLock = null, compassOn = false;
   let knownSeekers = new Set();
+  let myPhoto = (me && me.photo) || null;   // data URL JPEG carrée ~128 px
+  let photoSent = false, needPhoto = false;
+  const photoCache = new Map();             // id -> { pv, url }
+  const photoPending = new Set();
 
   // --- Mode test sur ordinateur : ?sim=48.8584,2.2945&cap=90
   const sim = params.get('sim');
@@ -241,13 +261,71 @@
       const r = await post('/api/sync', {
         code: me.code, id: me.id, name: me.name, seeking: targetId,
         lat: pos && pos.lat, lon: pos && pos.lon, acc: pos && pos.acc,
+        photo: myPhoto && (!photoSent || needPhoto) ? myPhoto : undefined,
       });
-      if (r.ok) { members = r.data.members || []; netDown = false; }
+      if (r.ok) {
+        members = r.data.members || []; netDown = false;
+        if (myPhoto && !photoSent) photoSent = true;
+        needPhoto = !!r.data.needPhoto && !!myPhoto;
+        fetchPhotos();
+      }
       else if (r.status === 403) { leave('Ce groupe est complet.'); return; }
     } catch { netDown = true; }
     render();
   }
   let netDown = false;
+
+  // Récupère les photos des autres (une seule fois, puis cache ; re-télécharge si la personne en change).
+  function fetchPhotos() {
+    for (const m of members) {
+      if (m.id === me.id || !m.pv) continue;
+      const c = photoCache.get(m.id);
+      if ((c && c.pv === m.pv) || photoPending.has(m.id)) continue;
+      photoPending.add(m.id);
+      post('/api/photo', { code: me.code, id: m.id }).then((r) => {
+        if (r.ok && r.data.photo) { photoCache.set(m.id, { pv: r.data.pv, url: r.data.photo }); render(); }
+      }).catch(() => {}).finally(() => photoPending.delete(m.id));
+    }
+  }
+
+  // Photo d'identité : recadrée au carré, réduite à 128 px, ~5-8 Ko (rapide même sur réseau saturé).
+  function shrinkPhoto(file) {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file), img = new Image();
+      img.onload = () => {
+        const s = Math.min(img.naturalWidth, img.naturalHeight), c = document.createElement('canvas');
+        c.width = c.height = 128;
+        c.getContext('2d').drawImage(img, (img.naturalWidth - s) / 2, (img.naturalHeight - s) / 2, s, s, 0, 0, 128, 128);
+        URL.revokeObjectURL(url);
+        resolve(c.toDataURL('image/jpeg', 0.72));
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(); };
+      img.src = url;
+    });
+  }
+  function showMyPhoto() {
+    const ph = $('photoPrev');
+    ph.style.backgroundImage = myPhoto ? 'url(' + myPhoto + ')' : '';
+    ph.textContent = myPhoto ? '' : '📷';
+    $('photoTitle').textContent = myPhoto ? 'Photo ajoutée ✓' : 'Prendre un selfie';
+    $('photoSub').textContent = myPhoto ? 'Touche pour la changer' : 'Facultatif · tu peux aussi choisir une photo';
+  }
+  $('photoBtn').onclick = () => $('photoFile').click();
+  $('photoFile').onchange = async (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    try { myPhoto = await shrinkPhoto(f); photoSent = false; showMyPhoto(); $('homeErr').textContent = ''; }
+    catch { $('homeErr').textContent = 'Photo illisible : essaie-en une autre.'; }
+    e.target.value = '';
+  };
+  showMyPhoto();
+
+  // Avatar d'un membre : sa photo si on l'a, sinon l'initiale sur fond de couleur.
+  function paintAvatar(el, id, name) {
+    const url = id === (me && me.id) ? myPhoto : (photoCache.get(id) || {}).url;
+    if (url) { el.style.backgroundImage = 'url(' + url + ')'; el.textContent = ''; }
+    else { el.style.backgroundImage = ''; el.style.background = colorOf(id); el.textContent = name[0].toUpperCase(); }
+  }
 
   // --- Capteurs
   function startGps() {
@@ -340,7 +418,7 @@
     clearInterval(syncTimer);
     if (watchId !== null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
     keepAwake(false);
-    me = null; members = []; targetId = null; store.set(null);
+    me = null; members = []; targetId = null; store.set(null); photoSent = false; photoCache.clear();
     $('homeErr').textContent = msg || '';
     show('home');
   }
@@ -360,7 +438,7 @@
     if (code.length !== 4) { $('homeErr').textContent = 'Le code fait 4 lettres.'; return; }
     startCompass();
     // Tout code de 4 lettres est accepté : le groupe est créé s'il n'existe pas encore.
-    me = { id: newId(), name, code }; enter();
+    me = { id: newId(), name, code, photo: myPhoto }; enter();
   };
   $('createBtn').onclick = async () => {
     const name = readName(); if (!name) return;
@@ -369,7 +447,7 @@
     try {
       const r = await post('/api/create', {});
       $('homeErr').textContent = '';
-      me = { id: newId(), name, code: r.data.code }; enter();
+      me = { id: newId(), name, code: r.data.code, photo: myPhoto }; enter();
     } catch { $('homeErr').textContent = 'Pas de connexion.'; }
   };
   $('leaveBtn').onclick = () => { if (confirm('Quitter le groupe ? Tes amis ne pourront plus te trouver.')) leave(); };
@@ -445,7 +523,7 @@
       const b = document.createElement('button');
       b.className = 'friend';
       const av = document.createElement('div');
-      av.className = 'avatar'; av.style.background = colorOf(m.id); av.textContent = m.name[0].toUpperCase();
+      av.className = 'avatar'; paintAvatar(av, m.id, m.name);
       const who = document.createElement('div'); who.className = 'who';
       const nm = document.createElement('b'); nm.textContent = m.name;
       const st = document.createElement('span');
@@ -467,6 +545,9 @@
     const t = members.find((m) => m.id === targetId);
     const dial = $('dial'), hint = $('cHint');
     $('cName').textContent = t ? t.name : '…';
+    const cp = $('cPhoto'), tu = t && (photoCache.get(t.id) || {}).url;
+    cp.style.display = tu ? 'block' : 'none';
+    if (tu) cp.style.backgroundImage = 'url(' + tu + ')';
     $('cCall').classList.remove('on');
     hint.classList.remove('strong');
     dial.className = 'dial';

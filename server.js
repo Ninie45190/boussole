@@ -15,6 +15,8 @@ const LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ'; // sans I ni O (confusion avec 1 et 
 
 /** code -> { touched, members: Map(id -> {name, lat, lon, acc, posAt, seenAt, seeking}) } */
 const groups = new Map();
+let pvCounter = 0; // numéro de version des photos : change quand quelqu'un envoie une nouvelle photo
+const PHOTO_RE = /^data:image\/jpeg;base64,[A-Za-z0-9+\/=]{20,24000}$/;
 
 function newCode() {
   for (;;) {
@@ -62,7 +64,7 @@ function readBody(req) {
     let data = '';
     req.on('data', (c) => {
       data += c;
-      if (data.length > 4000) req.destroy();
+      if (data.length > 30000) req.destroy(); // assez pour une petite photo d'identité
     });
     req.on('end', () => {
       try { resolve(JSON.parse(data || '{}')); } catch { resolve({}); }
@@ -100,12 +102,13 @@ async function api(req, res, route) {
     let m = g.members.get(id);
     if (!m) {
       if (g.members.size >= MAX_MEMBERS) return send(res, 403, { error: 'groupe complet' });
-      m = { name, lat: null, lon: null, acc: null, posAt: 0, seenAt: now, seeking: null };
+      m = { name, lat: null, lon: null, acc: null, posAt: 0, seenAt: now, seeking: null, photo: null, pv: 0 };
       g.members.set(id, m);
     }
     m.name = name;
     m.seenAt = now;
     m.seeking = b.seeking ? String(b.seeking).slice(0, 32) : null;
+    if (typeof b.photo === 'string' && PHOTO_RE.test(b.photo)) { m.photo = b.photo; m.pv = ++pvCounter; }
     const lat = num(b.lat, -90, 90), lon = num(b.lon, -180, 180);
     if (lat !== null && lon !== null) {
       m.lat = lat; m.lon = lon; m.acc = num(b.acc, 0, 100000); m.posAt = now;
@@ -118,9 +121,17 @@ async function api(req, res, route) {
         posAge: x.posAt ? now - x.posAt : null, // âges plutôt que dates : pas de souci d'horloge
         seenAge: now - x.seenAt,
         seeking: now - x.seenAt < 15000 ? x.seeking : null,
+        pv: x.pv,
       });
     }
-    return send(res, 200, { members });
+    return send(res, 200, { members, needPhoto: m.pv === 0 });
+  }
+
+  // Une photo à la demande (le client la garde en cache tant que son numéro de version ne change pas).
+  if (route === '/api/photo') {
+    const g = groups.get(cleanCode(b.code));
+    const m = g && g.members.get(String(b.id || ''));
+    return send(res, 200, { photo: m && m.photo ? m.photo : null, pv: m ? m.pv : 0 });
   }
 
   if (route === '/api/leave') {
